@@ -93,7 +93,7 @@ function! s:run(cmd, opts)
         \ 'on_stderr': get(a:opts, 'on_stderr'),
         \ }
   let l:job_id = s:job_id()
-  let s:jobs[s:job_id()] = l:job
+  let s:jobs[l:job_id] = l:job
 
   let l:cmd = l:cmd.' <cmd>'.a:cmd
 
