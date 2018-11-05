@@ -5,30 +5,35 @@ function! terma#jobs#ids()
   return map(keys(s:jobs), {i, val -> str2nr(val)})
 endfunction
 
-function! terma#jobs#create(cmd_opts)
-  return {
+function! terma#jobs#create(cmd, provider, opts)
+  let l:job = {
+        \ 'id': s:job_id,
+        \ 'cmd': a:cmd,
+        \ 'provider': a:provider,
         \ 'stdout_file': tempname(),
         \ 'stderr_file': tempname(),
-        \ 'on_exit': get(a:cmd_opts, 'on_exit'),
-        \ 'on_stdout': get(a:cmd_opts, 'on_stdout'),
-        \ 'on_stderr': get(a:cmd_opts, 'on_stderr'),
+        \ 'on_exit': get(a:opts, 'on_exit'),
+        \ 'on_stdout': get(a:opts, 'on_stdout'),
+        \ 'on_stderr': get(a:opts, 'on_stderr'),
         \ }
-endfunction
-
-function! terma#jobs#get(id)
-  return get(s:jobs, a:id)
-endfunction
-
-function! terma#jobs#add(job)
-  let s:jobs[s:job_id] = a:job
+  let s:jobs[s:job_id] = l:job
 
   let s:job_id += 1
 
-  return s:job_id - 1
+  return l:job
+endfunction
+
+function! terma#jobs#get(id)
+  return get(s:jobs, a:id, {})
 endfunction
 
 function! terma#jobs#remove(id)
   if has_key(s:jobs, a:id)
+    let l:job = terma#jobs#get(a:id)
+
+    call delete(l:job['stdout_file'])
+    call delete(l:job['stderr_file'])
+
     call remove(s:jobs, a:id)
 
     let s:job_id = a:id
@@ -42,16 +47,12 @@ function! terma#jobs#onexit(job_id, exit_code, ...)
     let l:stdout = readfile(l:job['stdout_file'])
   catch
     let l:stdout = []
-  finally
-    call delete(l:job['stdout_file'])
   endtry
 
   try
     let l:stderr = readfile(l:job['stderr_file'])
   catch
     let l:stderr = []
-  finally
-    call delete(l:job['stderr_file'])
   endtry
 
   sleep 100m

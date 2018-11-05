@@ -1,36 +1,31 @@
-function! s:execute(cmd, opts)
+let s:has_tmux = {}
+
+function! s:has_tmux.session() dict
+  if !exists('$TMUX')
+    throw "[tmux]: Not running inside Tmux session"
+  endif
+endfunction
+
+function! s:has_tmux.executable(tmux) dict
+  if !executable(a:tmux)
+    throw "[tmux]: <".a:tmux."> can't be executed"
+  endif
+endfunction
+
+function! s:execute(cmd, job, opts)
   let l:tmux_cmd = get(a:opts, 'tmux_cmd', 'tmux')
 
-  if !exists('$TMUX') || !executable(l:tmux_cmd)
-    throw 'Tmux provider is unavailable'
-  endif
+  call s:has_tmux.session()
+  call s:has_tmux.executable(l:tmux_cmd)
 
-  let l:type = get(a:opts, 'type', 'run')
+  let l:job_id = a:job['id']
 
-  if l:type == 'split'
-    let l:cmd = l:tmux_cmd
-          \ .' split-window '
-          \ .(get(a:opts, 'vertical') ? '-h' : '-v')
-
-    if has_key(a:opts, 'size')
-      let l:cmd = l:cmd.' -'.get(a:opts, 'size_unit', 'l').a:opts['size']
-    endif
-  elseif l:type == 'window'
-    let l:cmd = l:tmux_cmd.' new-window'
-  elseif l:type == 'run'
-    let l:cmd = l:tmux_cmd.' run-shell -b'
-  endif
-
-  if get(a:opts, 'dispatch')
-    call system(l:cmd.' '.shellescape(a:cmd))
-
-    return
-  endif
-
-  let l:job = terma#jobs#create(a:opts)
-  let l:job_id = terma#jobs#add(l:job)
-
-  let l:cmd = terma#shell#setupredir(l:cmd.' <cmd>'.a:cmd, a:opts, l:job)
+  let l:cmd = l:tmux_cmd
+        \ .a:cmd
+        \ .' <cmd>'
+        \ .terma#shell#setupredir(
+          \ terma#shell#setuppid(get(a:job, 'cmd', ''), a:job), a:opts, a:job
+          \ )
         \ .'; '
         \ .l:tmux_cmd
         \ .' send-keys -t:'
@@ -50,17 +45,46 @@ function! s:execute(cmd, opts)
   try
     call system(l:cmd)
   catch
-    call delete(l:job['stdout_file'])
-    call delete(l:job['stderr_file'])
-
     call terma#jobs#remove(l:job_id)
   endtry
 
   return l:job_id
 endfunction
 
+function! s:split(job, opts)
+  let l:cmd = ' split-window '.(get(a:opts, 'vertical') ? '-h' : '-v')
+
+  if has_key(a:opts, 'size')
+    let l:cmd = l:cmd.' -'.get(a:opts, 'size_unit', 'l').a:opts['size']
+  endif
+
+  call s:execute(l:cmd, a:job, a:opts)
+endfunction
+
+function! s:window(job, opts)
+  let l:cmd = ' new-window'
+
+  call s:execute(l:cmd, a:job, a:opts)
+endfunction
+
+function! s:run(job, opts)
+  let l:cmd = ' run-shell -b'
+
+  call s:execute(l:cmd, a:job, a:opts)
+endfunction
+
+function! s:stop(job)
+  try
+    call terma#shell#killjob(a:job)
+    call terma#jobs#onexit(a:job['id'], 1)
+  finally
+    call terma#jobs#remove(a:job['id'])
+  endtry
+endfunction
+
 call terma#providers#add('tmux', {
-      \ 'split': function('s:execute'),
-      \ 'window': function('s:execute'),
-      \ 'run': function('s:execute'),
+      \ 'split': function('s:split'),
+      \ 'window': function('s:window'),
+      \ 'run': function('s:run'),
+      \ 'stop': function('s:stop'),
       \ })

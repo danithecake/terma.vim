@@ -1,23 +1,40 @@
 function! s:run(cmd, ...)
   let l:opts = get(a:, 1, {})
-  let l:provider = get(l:opts, 'provider', g:terma_provider)
-  let l:Runner = get(terma#providers#get(l:provider), get(l:opts, 'type', 'run'))
+  let l:cmd_type = get(l:opts, 'type', 'run')
+  let l:providers = get(
+        \ a:,
+        \ 2,
+        \ extend(
+          \ [get(l:opts, 'provider', g:terma_provider)],
+          \ terma#providers#names()
+          \ )
+        \ )
+
+  if !len(l:providers)
+    call terma#utils#echoerr('No available <terma#'.l:cmd_type.'> providers')
+
+    return
+  endif
+
+  let l:provider = l:providers[0]
+  let l:job = terma#jobs#create(a:cmd, l:provider, l:opts)
 
   try
-    call l:Runner(a:cmd, l:opts)
-  catch
-    let l:providers = filter(
-          \ extend([l:provider], get(a:, 2, terma#providers#names())),
-          \ {idx, val -> val != l:provider}
+    call call(
+          \ get(terma#providers#get(l:provider), l:cmd_type),
+          \ [l:job, l:opts]
           \ )
-
-    if !len(l:providers)
-      throw 'No available terma.vim providers'
-    endif
-
-    let l:opts['provider'] = l:providers[0]
-
-    call s:run(a:cmd, l:opts, l:providers)
+  catch
+    call terma#utils#echoerr(v:exception)
+    call terma#jobs#remove(l:job['id'])
+    call s:run(
+          \ a:cmd,
+          \ l:opts,
+          \ filter(
+            \ extend([l:provider], l:providers),
+            \ {idx, val -> val != l:provider}
+            \ )
+          \ )
   endtry
 endfunction
 
@@ -44,7 +61,7 @@ function! terma#stop(job_id)
   try
     call l:provider['stop'](l:job)
   catch /\(E716\|E718\)/
-    call terma#utils#echoerr("[terma.vim]: Job <".a:job_id."> provider doesn't have a <stop> method")
+    call terma#utils#echoerr("<".a:job_id."> provider doesn't have a <stop> handler")
   catch
     call terma#jobs#remove(a:job_id)
   endtry
