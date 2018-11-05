@@ -36,3 +36,16 @@ endfunction
 function! terma#shell(cmd, ...)
   call s:run(a:cmd, get(a:, 1, {}))
 endfunction
+
+function! terma#stop(job_id)
+  let l:job = terma#jobs#get(a:job_id)
+  let l:provider = terma#providers#get(get(l:job, 'provider'))
+
+  try
+    call l:provider['stop'](l:job)
+  catch /\(E716\|E718\)/
+    call terma#utils#echoerr("[terma.vim]: Job <".a:job_id."> provider doesn't have a <stop> method")
+  catch
+    call terma#jobs#remove(a:job_id)
+  endtry
+endfunction
